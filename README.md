@@ -15,7 +15,7 @@ Most of the course content will come from the following books. Specific chapters
 Freely available [online](http://www.deeplearningbook.org/)
 
 2. Deep Learning with Python, Chollet, 2017
-The first few chapters are available [online}(https://www.manning.com/books/deep-learning-with-python)
+The first few chapters are available [online](https://www.manning.com/books/deep-learning-with-python)
 
 
 
