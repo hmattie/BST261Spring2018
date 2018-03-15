@@ -11,10 +11,10 @@ Fill out [this form](https://docs.google.com/forms/d/e/1FAIpQLSdRiqeLyEBIg7PQLdq
 #### Textbooks
 Most of the course content will come from the following books. Specific chapters and sections will be suggested for reading, but will not be required.
 
-1. Deep Learning, Goodfellow and Bengio, 2016
+1. Deep Learning, Goodfellow and Bengio, 2016.
 Freely available [online](http://www.deeplearningbook.org/)
 
-2. Deep Learning with Python, Chollet, 2017
+2. Deep Learning with Python, Chollet, 2017.
 The first few chapters are available [online](https://www.manning.com/books/deep-learning-with-python)
 
 
