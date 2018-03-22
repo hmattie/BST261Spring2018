@@ -4,7 +4,7 @@ Welcome to the BST 261 Spring 2018 repo. Here you will find the syllabus, course
 
 #### Office Hours:
 * Heather: Wednesdays 1-2:30pm, Building 1 Room 421A (Biostatistics Department)
-* Stephanie: TBD
+* Stephanie: Thursdays 11am-12pm
 
 Fill out [this form](https://docs.google.com/forms/d/e/1FAIpQLSdRiqeLyEBIg7PQLdq8dOlnf3xvim1hulOmFS6NMNJxTM-EZg/viewform?usp=sf_link) to report preferred office hour days and times.
 
