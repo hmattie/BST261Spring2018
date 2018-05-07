@@ -1,0 +1,155 @@
+---
+title: "bst261 genomics example"
+author: "Matt Ploenzke"
+date: "5/7/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(keras)
+library(ggseqlogo)
+library(tidyverse)
+library(stringi)
+```
+
+Model options.
+```{r}
+rm(list=ls(all=TRUE))
+opt <- list()
+opt$embedding1 <- 'CCCCCCC'
+opt$max_len <- 200
+opt$filter_len <- 16
+```
+
+Define some helper functions.
+```{r}
+one_hot <- function(dnastr) {
+  a <- strsplit(as.character(dnastr),"")[[1]]
+  buffer.left <- rep(0, ceiling((opt$max_len+2*opt$filter_len-2-nchar(dnastr))/2))
+  buffer.right <- rep(0, floor((opt$max_len+2*opt$filter_len-2-nchar(dnastr))/2))
+  oH <- c(buffer.left, as.numeric(a=="A"), buffer.right,
+          buffer.left, as.numeric(a=="C"), buffer.right,
+          buffer.left, as.numeric(a=="G"), buffer.right,
+          buffer.left, as.numeric(a=="T"), buffer.right)
+  return(oH)
+}
+```
+
+Embed the sequence into positive and negative sequences respectively.
+```{r}
+negative.cases <- data.frame(sequence=sapply(1:1000,function(i) {paste(sample(c('A','C','G','T'),size=opt$max_len,replace=TRUE),collapse='')}),y=0)
+positive.cases <- data.frame(sequence=sapply(1:1000,function(i) {paste(sample(c('A','C','G','T'),size=opt$max_len,replace=TRUE),collapse='')}),y=1)
+positive.cases$sequence <- as.character(positive.cases$sequence)
+for (irow in 1:nrow(positive.cases)) {
+  location <- sample(1:(opt$max_len-nchar(opt$embedding1)),1)
+  substr(positive.cases[irow,'sequence'],start=location,stop=(location+nchar(opt$embedding1)-1)) <- opt$embedding1
+}
+```
+
+Join cases and randomly split into training and validation.
+```{r}
+all.cases <- rbind(positive.cases,negative.cases)
+all.cases <- all.cases[sample(1:nrow(all.cases),size=nrow(all.cases),replace=FALSE),]
+idx <- sample(1:nrow(all.cases),round(.9*nrow(all.cases)))
+training_data <- all.cases[idx,c('sequence')]
+training_labels <- all.cases[idx,'y']
+testing_data <- all.cases[-idx,c('sequence')]
+testing_labels <- all.cases[-idx,'y']
+```
+
+One-hot encode.
+```{r}
+training_array <- aperm(array(c(sapply(training_data,one_hot)),dim=c((opt$max_len+2*opt$filter_len-2),4,length(training_data),1)),perm=c(3,2,1,4))
+testing_array <- aperm(array(c(sapply(testing_data,one_hot)),dim=c((opt$max_len+2*opt$filter_len-2),4,length(testing_data),1)),perm=c(3,2,1,4))
+```
+
+Define functions to output pretty plots during training.
+```{r}
+trackMotifs <- function(model, epoch) {
+  all_dna_strings <- list()
+  activations_fn <- k_function(inputs = list(model$input),outputs = list(model$get_layer(index=1L)$output))
+  activations <- activations_fn(list(testing_array))[[1]]
+  for (filt in 1:dim(activations)[4]) {
+    act <- activations[,,,filt]
+    act[act < .75*max(act)] <- 0 # this is the version used by Alipinahi
+    pos.values <- which(act>0,arr.ind=TRUE)
+    if (nrow(pos.values)>0) {
+      seqs <- lapply(1:nrow(pos.values), function(seqq) {
+        temp_str <- testing_data[pos.values[seqq,1]]
+        temp_idx <- pos.values[seqq,2]
+        temp_idx <- ifelse(temp_idx-opt$filter_len<1,temp_idx-(temp_idx-opt$filter_len),temp_idx)
+        strseq <- substr(temp_str, temp_idx-(opt$filter_len-1), temp_idx)
+        strseq <- ifelse(nchar(strseq)<opt$filter_len,paste(strseq,stri_dup("N",opt$filter_len-nchar(strseq)),sep=''),strseq)
+        return(strseq)
+      })
+      dna_strings <- do.call(c,seqs)
+      all_dna_strings[[paste('Motif',filt,sep=' ')]] <- dna_strings
+    }
+  }
+  ggplot()+
+    geom_logo(all_dna_strings,seq_type='dna') + 
+    theme_logo() + 
+    facet_wrap(~seq_group, ncol=ceiling(4), scales='free_x') + 
+    theme(panel.background = element_rect(fill = NA, color = "black"),
+          strip.text.x = element_text(size = 20),
+          axis.title=element_text(size=20),
+          axis.text=element_text(size=14),
+          axis.text.x=element_text(size=10)) 
+  ggsave("Empirical_filter_motifs.pdf",width=15,height=7.5,units='in')
+}
+```
+
+R6 class to define callback.
+```{r}
+makeMotifs <- R6::R6Class("makeMotifs",
+  inherit = KerasCallback,
+  public = list(
+    model = NULL,
+    N = NULL,
+    epoch = NULL,
+    initialize = function(model = NA, N = NA) {
+      self$model <- model
+      self$N <- N
+      self$epoch <- 1
+    },
+   on_epoch_end = function(epoch, logs = list()) {
+     if (self$epoch %% self$N == 0) {
+       trackMotifs(self$model, self$epoch)
+     }
+     self$epoch <- self$epoch + 1
+   }
+))
+```
+
+Build the model components including GC bias and full sequence information.
+```{r}
+full_sequence <- layer_input(shape=c(4,opt$max_len + 2*opt$filter_len-2,1))
+full_sequence_model <- full_sequence %>%
+  layer_conv_2d(filter = 8,
+                kernel_size = c(4,opt$filter_len),
+                padding = "valid",
+                input_shape = c(4, opt$max_len+2*opt$filter_len-2, 1)) %>%
+  layer_max_pooling_2d(pool_size = c(1,4)) %>%
+  layer_flatten() %>% 
+  layer_dense(units=1,activation='sigmoid') 
+
+sequence_model <- keras_model(inputs = full_sequence, outputs = full_sequence_model)
+sequence_model %>% compile(
+  loss = "binary_crossentropy",
+  optimizer = optimizer_adam(),
+  metrics = c("accuracy")
+)
+```
+
+Fit the model.
+```{r}
+moMotifs <- makeMotifs$new(sequence_model,1)
+sequence_fit <- sequence_model %>% fit(
+  x=training_array, training_labels,
+  epochs = 10,
+  validation_data = list(testing_array, testing_labels),
+  shuffle = TRUE,
+  callbacks = list(moMotifs)
+)
+```
